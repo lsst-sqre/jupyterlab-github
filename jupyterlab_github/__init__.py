@@ -1,4 +1,5 @@
-import re, json
+import re
+import json
 
 import tornado.gen as gen
 from tornado.httputil import url_concat
@@ -14,30 +15,35 @@ path_regex = r'(?P<path>(?:(?:/[^/]+)+|/?))'
 link_regex = re.compile(r'<([^>]*)>;\s*rel="([\w]*)\"')
 GITHUB_API = 'https://api.github.com'
 
+
 class GitHubConfig(Configurable):
     """
-    A Configurable that declares the 'client_id' and 'client_secret'
-    parameters.
+    A Configurable that declares the 'client_id', 'client_secret', and
+    'access_token' parameters.
     """
     client_id = Unicode('', config=True,
-        help='The Client ID for the GitHub OAuth app')
+                        help='The Client ID for the GitHub OAuth app')
     client_secret = Unicode('', config=True,
-        help='The Client secret for the GitHub OAuth app')
+                            help='The Client secret for the GitHub OAuth app')
+    access_token = Unicode('', config=True,
+                           help='An access token for GitHub OAuth')
+
 
 class GitHubHandler(APIHandler):
     """
     A proxy for the GitHub API v3.
 
     The purpose of this proxy is to add the 'client_id' and 'client_secret'
-    tokens to the API request, which allows for a higher rate limit.
+    tokens to the API request, which allows for a higher rate limit.  If
+    'access_token' is provided, it can use that too.
     Without this, the rate limit on unauthenticated calls is so limited as
     to be practically useless.
     """
     @gen.coroutine
-    def get(self, path = ''):
+    def get(self, path=''):
         """
         Proxy API requests to GitHub, adding 'client_id' and 'client_secret'
-        if they have been set.
+        if they have been set, or 'access_token' if it exists.
         """
 
         # Get access to the notebook config object
@@ -46,13 +52,17 @@ class GitHubHandler(APIHandler):
             api_path = url_path_join(GITHUB_API, url_escape(path))
             # If the config has client_id and client_secret set,
             # apply them to the request.
+            addl_headers = dict()
             if c.client_id != '' and c.client_secret != '':
                 api_path = url_concat(api_path,
-                    {'client_id': c.client_id,\
-                     'client_secret': c.client_secret,\
-                     'per_page': 100})
+                                      {'client_id': c.client_id,
+                                       'client_secret': c.client_secret,
+                                       'per_page': 100})
+            elif c.access_token:
+                addl_headers["Authorization"] = "token %s" % c.access_token
             client = AsyncHTTPClient()
-            request = HTTPRequest(api_path, user_agent='JupyterLab GitHub')
+            request = HTTPRequest(api_path, user_agent='JupyterLab GitHub',
+                                  headers=addl_headers)
             response = yield client.fetch(request)
             data = json.loads(response.body.decode('utf-8'))
 
@@ -61,7 +71,8 @@ class GitHubHandler(APIHandler):
             # are loaded into the data buffer.
             next_page_path = self._maybe_get_next_page_path(response)
             while next_page_path:
-                request = HTTPRequest(next_page_path, user_agent='JupyterLab GitHub')
+                request = HTTPRequest(
+                    next_page_path, user_agent='JupyterLab GitHub')
                 response = yield client.fetch(request)
                 next_page_path = self._maybe_get_next_page_path(response)
                 data.extend(json.loads(response.body.decode('utf-8')))
@@ -71,7 +82,7 @@ class GitHubHandler(APIHandler):
 
         except HTTPError as err:
             self.set_status(err.code)
-            self.finish(err.response.body);
+            self.finish(err.response.body)
 
     def _maybe_get_next_page_path(self, response):
         # If there is a 'Link' header in the response, we
@@ -87,10 +98,12 @@ class GitHubHandler(APIHandler):
 
         return next_page_path
 
+
 def _jupyter_server_extension_paths():
     return [{
         'module': 'jupyterlab_github'
     }]
+
 
 def load_jupyter_server_extension(nb_server_app):
     """
@@ -101,4 +114,5 @@ def load_jupyter_server_extension(nb_server_app):
     """
     web_app = nb_server_app.web_app
     host_pattern = '.*$'
-    web_app.add_handlers(host_pattern, [(r'/github%s' % path_regex, GitHubHandler)])
+    web_app.add_handlers(
+        host_pattern, [(r'/github%s' % path_regex, GitHubHandler)])

@@ -73,6 +73,12 @@ These are the strings we need, and you have successfuly set up the application.
 It is important to note that the "Client Secret" string is, as the name suggests, a secret.
 *Do not* share this value online, as people may be able to use it to impersonate you on GitHub.
 
+Another method, if you are already using OAuth against GitHub as part of
+your authentication process, is to capture the `access_token` it
+provides, store that in your `auth_state` object on JupyterHub, pass
+that into the spawned environment as an environment variable, and
+arrange for it to end up in the configuration file as described below.
+
 ### 3. Installing the serverextension
 
 Install the serverextension using pip, and then enable it:
@@ -89,5 +95,13 @@ c.GitHubConfig.client_id = '< YOUR_CLIENT_ID >'
 c.GitHubConfig.client_secret = '< YOUR_CLIENT_SECRET >'
 ```
 where "`< YOUR_CLIENT_ID >`" and "`< YOUR_CLIENT_SECRET >`" are the string values you obtained above.
+
+Alternatively, you could put:
+
+`c.GitHubConfig = '< YOUR_ACCESS_TOKEN >'`
+
+or specify any of those values on the command line as:
+
+`jupyter lab --GitHubConfig.access_token=...` or similar.
 
 With this, you should be done! Launch JupyterLab and look for the GitHub tab on the left!
