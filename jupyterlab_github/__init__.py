@@ -54,12 +54,17 @@ class GitHubHandler(APIHandler):
             # apply them to the request.
             addl_headers = dict()
             if c.client_id != '' and c.client_secret != '':
+                self.log.info("Using client_id and client_secret.")
                 api_path = url_concat(api_path,
                                       {'client_id': c.client_id,
                                        'client_secret': c.client_secret,
                                        'per_page': 100})
             elif c.access_token:
+                self.log.info("Using access_token")
                 addl_headers["Authorization"] = "token %s" % c.access_token
+                api_path = url_concat(api_path, {'per_page': 100})
+            else:
+                self.log.warning("Not authenticated; expect rate-limiting.")
             client = AsyncHTTPClient()
             request = HTTPRequest(api_path, user_agent='JupyterLab GitHub',
                                   headers=addl_headers)
@@ -112,7 +117,9 @@ def load_jupyter_server_extension(nb_server_app):
     Args:
         nb_server_app (NotebookWebApplication): handle to the Notebook webserver instance.
     """
+    nb_server_app.log.info("Loading jupyter GitHub server extension")
     web_app = nb_server_app.web_app
     host_pattern = '.*$'
     web_app.add_handlers(
         host_pattern, [(r'/github%s' % path_regex, GitHubHandler)])
+    nb_server_app.log.info("GitHub server extension loaded.")
